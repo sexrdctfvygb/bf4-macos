@@ -1,0 +1,114 @@
+{
+  "schema": 1,
+  "reviewed": "2026-10-11",
+  "dxmt_commit": "7c8dee1c2d73415301ceb7d1fa810861cef4cd67",
+  "headers_commit": "9df86f2341616ef1888ae59919feaa6d4fad693d",
+  "sweetfx_commit": "93ddf39b357f5da534ed6d34ba4ec8cc7dcfa361",
+  "reshade_headers_commit": "fd0022170615ce0d8162d219bff07232fa6dd84f",
+  "downloads": {
+    "dxmt": {
+      "name": "dxmt-upstream.tar.gz",
+      "url": "https://codeload.github.com/3Shain/dxmt/tar.gz/7c8dee1c2d73415301ceb7d1fa810861cef4cd67",
+      "sha256": "2a65d8c14d8b49e2f935658435862c3167cd8e68d9e37a996baf34110a232ada",
+      "size": 764995
+    },
+    "template": {
+      "name": "template.tar.xz",
+      "url": "https://github.com/Sikarugir-App/Template/releases/download/v1.0/Template-1.0.21.tar.xz",
+      "sha256": "bbe996e4e4375318485953d0c7818b7b4b0a4dc1f13303bcc584f99f7602f78d",
+      "size": 95883080
+    },
+    "engine": {
+      "name": "engine.tar.xz",
+      "url": "https://github.com/Sikarugir-App/Engines/releases/download/v1.0/WS12WineSikarugir11.0_1.tar.xz",
+      "sha256": "67e29fb3d74f363af39c69ba11f9b13a79812c5db07cf4748672658e4a200a0e",
+      "size": 167322744
+    },
+    "sdk": {
+      "name": "wine-sdk.tar.gz",
+      "url": "https://github.com/3Shain/wine/releases/download/v8.16-3shain/wine.tar.gz",
+      "sha256": "289c7f19e270a3d3d0a6fdb07691b176c70a0795f6811e5255cba82425de4f10",
+      "size": 230434672
+    },
+    "compiler": {
+      "name": "llvm-mingw.tar.xz",
+      "url": "https://github.com/mstorsjo/llvm-mingw/releases/download/20260908/llvm-mingw-20260908-ucrt-macos-universal.tar.xz",
+      "sha256": "d1dc5d1ecf3a3ced5ed5544c72f1acd0c8e84eb3024d520ecc6b143eec62a149",
+      "size": 124244100
+    },
+    "headers": {
+      "name": "directx-headers.tar.gz",
+      "url": "https://codeload.github.com/misyltoad/mingw-directx-headers/tar.gz/9df86f2341616ef1888ae59919feaa6d4fad693d",
+      "sha256": "9c1b8bbfd2d6c758fac4d93c2808a46bc1eee429fe656b4f21b29e02615aa8aa",
+      "size": 473287
+    },
+    "ea": {
+      "name": "EAappInstaller.exe",
+      "url": "https://origin-a.akamaihd.net/EA-Desktop-Client-Download/installer-releases/EAappInstaller.exe",
+      "sha256": "4b581cb5cf94ee0031661ef3cbc98d8f9a60d80030f111acc641a68c20cf958b",
+      "size": 2141104
+    },
+    "reshade": {
+      "name": "reshade-installer.exe",
+      "url": "https://reshade.me/downloads/ReShade_Setup_6.8.0.exe",
+      "sha256": "207aea16205fbf952bc8fe1879966672454cf04002e7ad34237c7990a5b3c0b4",
+      "size": 4075064
+    },
+    "meson": {
+      "name": "meson-1.10.0-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/32/4f/c398c6f06ece1c6c246e008d5dac3824c98f54d3eb3d8014f4910afd6d48/meson-1.10.0-py3-none-any.whl",
+      "sha256": "4b27aafce281e652dcb437b28007457411245d975c48b5db3a797d3e93ae1585",
+      "size": 1057029
+    },
+    "ninja": {
+      "name": "ninja-1.13.2-py3-none-macosx_10_9_universal2.whl",
+      "url": "https://files.pythonhosted.org/packages/b5/b8/90a9518f2264637084d6199bc20c2f3fb97fefc4c474d277720150c3bd6d/ninja-1.13.2-py3-none-macosx_10_9_universal2.whl",
+      "sha256": "fd82e26c0706ad4ab88e5fdd26f3fab0a987a90f810160f6c322e752c6af298b",
+      "size": 306611
+    },
+    "sweetfx": {
+      "name": "sweetfx-source.tar.gz",
+      "url": "https://codeload.github.com/CeeJayDK/SweetFX/tar.gz/93ddf39b357f5da534ed6d34ba4ec8cc7dcfa361",
+      "sha256": "15343152a53190b6641656e7e45a3ab27808d1f097fa53e4091862b1d5b4bd3e",
+      "size": 105596,
+      "commit": "93ddf39b357f5da534ed6d34ba4ec8cc7dcfa361"
+    },
+    "reshade_headers": {
+      "name": "reshade-headers.tar.gz",
+      "url": "https://codeload.github.com/crosire/reshade-shaders/tar.gz/fd0022170615ce0d8162d219bff07232fa6dd84f",
+      "sha256": "11126166cc0250dfe2e05b1a5d33b618feb6436290dfadb0177a5f262a3bbff1",
+      "size": 52713,
+      "commit": "fd0022170615ce0d8162d219bff07232fa6dd84f"
+    },
+    "ea_msi": {
+      "name": "EAapp-13.805.11.6320-15991211.msi",
+      "url": "https://origin-a.akamaihd.net/EA-Desktop-Client-Download/installer-releases/EAapp-13.805.11.6320-15991211.msi",
+      "sha256": "e538766b27cfd2c8f44e22a125f4c4e8826384e33ef35a9b95733af7e3645d0e",
+      "size": 251686912
+    },
+    "sweetfx_legacy": {
+      "name": "sweetfx-1.5.1-official.7z",
+      "url": "https://sfx.thelazy.net/media/downloads/SweetFX_1_5-23364.7z",
+      "sha256": "9ddcfc0555cf39b986519c180306a370a9386561811b5f805166dcb9a53b3636",
+      "size": 184246
+    }
+  },
+  "shader": {
+    "container_sha256": "90bf11b791af80da3936fd02870331d397a9efd70f2c0b2172eb83e7c5a81185",
+    "offset": 2805760,
+    "size": 161838,
+    "sha256": "bdd2960b0408b6810353675b9631924258703b1e9b28088ee871daa32251687b"
+  },
+  "reshade_dll_sha256": "b2945c29e7095491a901746b400e58db9b1592ab092bacf2a888ce37f02d08da",
+  "ea_bundle": {
+    "provider_key": "{ee3c1574-6473-4f36-a1f0-31c4cb81968e}",
+    "version": "13.805.11.6320",
+    "metadata_source": "Burn manifest of the locked official EA bootstrapper"
+  },
+  "legacy_headers": {
+    "LumaSharpen.h": "5da5048f3a09d1bc3c5f95967248833650761a4e2957ae4f1d32d4d419a50563",
+    "LiftGammaGain.h": "efe725f9ad23a094c3565247eb318671f3c02fee59344e973c70bdd391d33d6c",
+    "Curves.h": "fec1dc2ac76c9ee4d89bb4d184827b244378b066e3c615d1f313987b854dbfbd",
+    "Dither.h": "f907ce0a5836e5361db2db3c36ea954a2a948078df79dbe53732f520f4b6a1b6"
+  }
+}

@@ -1,0 +1,352 @@
+--- a/src/airconv/meson.build
++++ b/src/airconv/meson.build
+@@ -106,6 +106,6 @@
+ 
+ endif
+ 
+-if cpu_family == 'x86_64' or cpu_family == 'aarch64' or not dxmt_crossbuild
++if not dxmt_crossbuild
+   subdir('darwin')
+ endif
+\ No newline at end of file
+--- /dev/null
++++ b/src/d3d11/bf4_frame_capture.hpp
+@@ -0,0 +1,106 @@
++#pragma once
++// SPDX-License-Identifier: LGPL-2.1-or-later
++// BF4 Portable: optional successful-Present telemetry, 2026-10-10.
++// Successful DXGI Present intervals go to shared memory, never per-frame disk I/O.
++#include <windows.h>
++#include <cstdint>
++#include <cwchar>
++
++namespace dxmt {
++struct BF4FrameRecord {
++  volatile LONG64 sequence;
++  LONG64 timestamp;
++  LONG64 interval;
++  uint32_t flags;
++  uint32_t reserved;
++};
++struct BF4FrameHeader {
++  char magic[8];
++  uint32_t version;
++  uint32_t capacity;
++  uint32_t writer_pid;
++  uint32_t record_size;
++  volatile LONG64 committed;
++  LONG64 frequency;
++  LONG64 session;
++  LONG64 reserved[2];
++};
++static_assert(sizeof(BF4FrameHeader) == 64);
++static_assert(sizeof(BF4FrameRecord) == 32);
++
++class BF4FrameCapture {
++  static constexpr uint32_t capacity = 65536;
++  HANDLE file_ = INVALID_HANDLE_VALUE, mapping_ = nullptr;
++  BF4FrameHeader *header_ = nullptr;
++  BF4FrameRecord *records_ = nullptr;
++  LONG64 previous_ = 0, focus_check_ = 0, count_ = 0;
++  bool focused_ = false;
++public:
++  BF4FrameCapture() {
++    WCHAR process[MAX_PATH], destination[MAX_PATH];
++    if (!GetModuleFileNameW(nullptr, process, MAX_PATH)) return;
++    const WCHAR *name = wcsrchr(process, L'\\');
++    if (_wcsicmp(name ? name + 1 : process, L"bf4.exe")) return;
++    if (!GetEnvironmentVariableW(L"DXMT_BF4_FRAME_CAPTURE", destination, MAX_PATH)) return;
++    if (!wcscmp(destination, L"0")) return;
++    file_ = CreateFileW(destination, GENERIC_READ | GENERIC_WRITE,
++        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_ALWAYS,
++        FILE_ATTRIBUTE_NORMAL, nullptr);
++    if (file_ == INVALID_HANDLE_VALUE) return;
++    LARGE_INTEGER size;
++    size.QuadPart = sizeof(BF4FrameHeader) + capacity * sizeof(BF4FrameRecord);
++    if (!SetFilePointerEx(file_, size, nullptr, FILE_BEGIN) || !SetEndOfFile(file_)) return;
++    mapping_ = CreateFileMappingW(file_, nullptr, PAGE_READWRITE, 0, 0, nullptr);
++    if (!mapping_) return;
++    header_ = static_cast<BF4FrameHeader *>(MapViewOfFile(mapping_, FILE_MAP_WRITE, 0, 0, 0));
++    if (!header_) return;
++    ZeroMemory(header_, static_cast<SIZE_T>(size.QuadPart));
++    LARGE_INTEGER frequency, now;
++    QueryPerformanceFrequency(&frequency);
++    QueryPerformanceCounter(&now);
++    header_->version = 2;
++    header_->capacity = capacity;
++    header_->writer_pid = GetCurrentProcessId();
++    header_->record_size = sizeof(BF4FrameRecord);
++    header_->frequency = frequency.QuadPart;
++    header_->session = now.QuadPart;
++    records_ = reinterpret_cast<BF4FrameRecord *>(header_ + 1);
++    memcpy(header_->magic, "BF4FT02", 8);
++  }
++  ~BF4FrameCapture() {
++    if (header_) UnmapViewOfFile(header_);
++    if (mapping_) CloseHandle(mapping_);
++    if (file_ != INVALID_HANDLE_VALUE) CloseHandle(file_);
++  }
++  LONG64 present() {
++    if (!header_) return 0;
++    LARGE_INTEGER now;
++    QueryPerformanceCounter(&now);
++    bool continuity = previous_ > 0;
++    if (now.QuadPart - focus_check_ > header_->frequency / 20) {
++      DWORD foreground = 0;
++      GetWindowThreadProcessId(GetForegroundWindow(), &foreground);
++      bool focused = foreground == GetCurrentProcessId();
++      if (focused != focused_) continuity = false;
++      focused_ = focused;
++      focus_check_ = now.QuadPart;
++    }
++    if (previous_ > 0) {
++      LONG64 sequence = ++count_;
++      auto &record = records_[(sequence - 1) % capacity];
++      record.timestamp = now.QuadPart;
++      record.interval = now.QuadPart - previous_;
++      record.flags = (focused_ ? 1u : 0u) | (continuity ? 2u : 0u);
++      record.reserved = 0;
++      InterlockedExchange64(&record.sequence, sequence);
++      InterlockedExchange64(&header_->committed, sequence);
++    }
++    previous_ = now.QuadPart;
++    return count_;
++  }
++};
++inline LONG64 captureBF4Present() {
++  static BF4FrameCapture capture;
++  return capture.present();
++}
++}
+--- a/src/d3d11/d3d11_context_impl.cpp
++++ b/src/d3d11/d3d11_context_impl.cpp
+@@ -4357,6 +4357,9 @@
+ 
+   void
+   ClearRenderTargetView(D3D11RenderTargetView *pRenderTargetView, const FLOAT ColorRGBA[4]) {
++    if (!pRenderTargetView)
++      return;
++
+     InvalidateCurrentPass();
+     auto clear_color = WMTClearColor{ColorRGBA[0], ColorRGBA[1], ColorRGBA[2], ColorRGBA[3]};
+     auto &props = pRenderTargetView->description();
+@@ -5531,4 +5534,4 @@
+ 
+ };
+ 
+-} // namespace dxmt
+\ No newline at end of file
++} // namespace dxmt
+--- a/src/d3d11/d3d11_device.cpp
++++ b/src/d3d11/d3d11_device.cpp
+@@ -942,6 +942,14 @@
+     if (!ppRTView)
+       return S_FALSE;
+ 
++    D3D11_RESOURCE_DIMENSION dimension;
++    pResource->GetType(&dimension);
++    if (dimension == D3D11_RESOURCE_DIMENSION_BUFFER) {
++      // Match DXVK-macOS's BF3/BF4 buffer RTV compatibility behavior.
++      WARN("D3D11: Buffer render target view compatibility path");
++      return S_OK;
++    }
++
+     return static_cast<D3D11ResourceCommon *>(pResource)->CreateRenderTargetView(pDesc, ppRTView);
+   }
+ 
+@@ -1316,4 +1324,4 @@
+   return Com<IMTLDXGIDevice>::transfer(new MTLD3D11DXGIDevice(
+       std::move(device), adapter, feature_level, feature_flags));
+ };
+-} // namespace dxmt
+\ No newline at end of file
++} // namespace dxmt
+--- a/src/d3d11/d3d11_swapchain.cpp
++++ b/src/d3d11/d3d11_swapchain.cpp
+@@ -10,6 +10,7 @@
+ #include "dxmt_hud_state.hpp"
+ #include "dxmt_statistics.hpp"
+ #include "dxmt_presenter.hpp"
++#include "bf4_frame_capture.hpp"
+ #include "log/log.hpp"
+ #include "d3d11_resource.hpp"
+ #include "d3d11_device.hpp"
+@@ -26,6 +27,15 @@
+ #include <atomic>
+ #include <cfloat>
+ #include <format>
++
++#define MACDRV_ESCAPE_GET_SURFACE     6790
++#define MACDRV_ESCAPE_RELEASE_SURFACE 6791
++
++struct macdrv_escape_surface
++{
++    UINT64 surface; /* Opaque pointer to struct macdrv_client_surface */
++    UINT64 layer;   /* Opaque pointer to CAMetalLayer */
++};
+ 
+ /**
+ Ref: https://learn.microsoft.com/en-us/windows/win32/api/dxgi1_3/nf-dxgi1_3-idxgiswapchain2-setmaximumframelatency
+@@ -132,10 +142,26 @@
+       monitor_(wsi::getWindowMonitor(hWnd)),
+       hud(WMT::DeveloperHUDProperties::instance()) {
+ 
+-    native_view_ = WMT::CreateMetalViewFromHWND((intptr_t)hWnd, pDevice->GetMTLDevice(), layer_weak_);
+-
+-    if (!native_view_) {
+-      ERR("Failed to create metal view, it seems like your Wine has no exported symbols needed by DXMT.");
++    HDC hdc = GetDC(hWnd);
++    int escapeCode = MACDRV_ESCAPE_GET_SURFACE;
++    int supported = ExtEscape(hdc, QUERYESCSUPPORT, sizeof(int), (LPCSTR)&escapeCode, 0, NULL);
++    if (supported > 0) {
++      struct macdrv_escape_surface surfaceInfo = {0};
++      int result = ExtEscape(hdc, MACDRV_ESCAPE_GET_SURFACE, 0, NULL, sizeof(surfaceInfo), (LPSTR)&surfaceInfo);
++      if (result > 0 && surfaceInfo.layer) {
++        client_surface_.handle = surfaceInfo.surface;
++        layer_weak_.handle = surfaceInfo.layer;
++      }
++    }
++    ReleaseDC(hWnd, hdc);
++
++    if (!layer_weak_) {
++      ERR("Failed to get metal layer via MACDRV_ESCAPE_GET_SURFACE.");
++      native_view_ = WMT::CreateMetalViewFromHWND((intptr_t)hWnd, pDevice->GetMTLDevice(), layer_weak_);
++    }
++
++    if (!layer_weak_) {
++      ERR("Failed to get metal layer, it seems like your Wine has not the needed functionality for DXMT.");
+       abort();
+     }
+ 
+@@ -207,7 +233,16 @@
+ 
+   ~MTLD3D11SwapChain() {
+     device_context_->WaitUntilGPUIdle();
+-    WMT::ReleaseMetalView(native_view_);
++    if (client_surface_ != nullptr) {
++      HDC hdc = GetDC(hWnd);
++      struct macdrv_escape_surface surfaceInfo = {0};
++      surfaceInfo.surface = client_surface_.handle;
++      ExtEscape(hdc, MACDRV_ESCAPE_RELEASE_SURFACE, sizeof(surfaceInfo), (LPCSTR)&surfaceInfo, 0, NULL);
++      ReleaseDC(hWnd, hdc);
++    } else {
++      WMT::ReleaseMetalView(native_view_);
++    }
++    client_surface_ = {};
+     native_view_ = {};
+     CloseHandle(present_semaphore_);
+   };
+@@ -812,6 +847,8 @@
+     lock.unlock(); // since PresentBoundary() will and should only stall current thread
+ 
+     cmd_queue.PresentBoundary();
++
++    if (hr == S_OK) captureBF4Present();
+ 
+     return hr;
+   };
+@@ -1063,6 +1100,7 @@
+   Com<IDXGIFactory1> factory_;
+   Com<IMTLDXGIDevice> dxgi_device_;
+   WMT::Object native_view_;
++  WMT::Object client_surface_;
+   WMT::MetalLayer layer_weak_;
+   ULONG presentation_count_;
+   DXGI_SWAP_CHAIN_DESC1 desc_;
+@@ -1103,13 +1141,6 @@
+     return DXGI_ERROR_INVALID_CALL;
+   InitReturnPtr(ppSwapChain);
+ 
+-  DWORD window_process_id;
+-  GetWindowThreadProcessId(hWnd, &window_process_id);
+-  if (GetProcessId(GetCurrentProcess()) != window_process_id) {
+-    ERR("CreateSwapChain: cross-process swapchain not supported yet");
+-    return E_FAIL;
+-  }
+-
+   Com<IMTLDXGIDevice> layer_factory;
+   if (FAILED(pDevice->QueryInterface(IID_PPV_ARGS(&layer_factory)))) {
+     ERR("CreateSwapChain: failed to get IMTLDXGIDevice");
+@@ -1136,4 +1167,4 @@
+   return S_OK;
+ };
+ 
+-} // namespace dxmt
+\ No newline at end of file
++} // namespace dxmt
+--- a/src/dxmt/meson.build
++++ b/src/dxmt/meson.build
+@@ -29,15 +29,12 @@
+   'dxmt_command.metal'
+ ]
+ 
+-dxmt_shaders_ir = metalir_generator.process(dxmt_shaders)
+-
+-dxmt_shaders_lib = metallib_generator.process(dxmt_shaders_ir)
+-
+-dxmt_shaders_header = hexdump_generator.process(dxmt_shaders_lib)
++# Reuse the verified shader asset from the pinned official runtime.
++dxmt_shaders_header = files('precompiled/dxmt_command.h')
+ 
+ dxmt_lib = static_library('dxmt', dxmt_src, dxmt_shaders_header, dxmt_version,
+   dependencies        : [ util_dep, airconv_forward_dep, winemetal_dep ],
+-  include_directories : [ dxmt_include_path ],
++  include_directories : [ dxmt_include_path, include_directories('precompiled') ],
+ )
+ 
+ dxmt_dep = declare_dependency(
+--- a/src/util/util_win32_compat.h
++++ b/src/util/util_win32_compat.h
+@@ -99,6 +99,23 @@
+   return FALSE;
+ }
+ 
++#define QUERYESCSUPPORT 8
++
++inline HDC GetDC(HWND hWnd) {
++  dxmt::Logger::warn("GetDC not implemented.");
++  return nullptr;
++}
++
++inline int ReleaseDC(HWND hWnd, HDC hDC) {
++  dxmt::Logger::warn("ReleaseDC not implemented.");
++  return 0;
++}
++
++inline int ExtEscape(HDC hdc, int nEscape, int cbInput, LPCSTR lpszInData, int cbOutput, LPSTR lpszOutData) {
++  dxmt::Logger::warn("ExtEscape not implemented.");
++  return 0;
++}
++
+ 
+ #define ARRAYSIZE(a) (sizeof(a)/sizeof(*(a)))
+ 
+--- a/src/util/wsi_window_win32.cpp
++++ b/src/util/wsi_window_win32.cpp
+@@ -127,6 +127,9 @@
+ bool enterFullscreenMode(HMONITOR hMonitor, HWND hWindow,
+                          DXMTWindowState *pState,
+                          [[maybe_unused]] bool modeSwitch) {
++  // Initialize this thread's desktop before Wine locks the window style.
++  ::GetDesktopWindow();
++
+   RECT rect = {};
+   getDesktopCoordinates(hMonitor, &rect);
+ 
+--- a/src/winemetal/meson.build
++++ b/src/winemetal/meson.build
+@@ -57,6 +57,6 @@
+   build_by_default : true
+ )
+ 
+-if cpu_family == 'x86_64' or cpu_family == 'aarch64'
++if not dxmt_crossbuild
+   subdir('unix')
+ endif
+--- a/version.h.in
++++ b/version.h.in
+@@ -1,3 +1,2 @@
+ #pragma once
+-
+-#define DXMT_VERSION "@VCS_TAG@"
++#define DXMT_VERSION "v0.80-244-g7c8dee1+bf4-portable"
